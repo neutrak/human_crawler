@@ -1,0 +1,15 @@
+Human Crawler, a webcrawler meant to appear human to NSA, DEA, and any other spying organizations
+This is meant to use up disk space on NSA servers to force them to drop meaningful data and make their entire apparatus useless.  
+
+
+Ideally this could register accounts on forums, email services, VOIP, etc. and use them periodically, but that requires CAPATCHA cracking which I'm no expert in.  
+	It's possible we could use a seperate registration for those accounts and have this crawler/bot merely use a known database, but that means the NSA could potentially get that database.  
+
+Messages will consist of a markov chain with real-world messages as the base to learn from, and ensure inclusion of words on the NSA trigger list on a higher-than-average but not immediate redflag rate.  
+A certain percentage of messages will be encrypted, so that the NSA MUST store them indefinitely according to their internal rules.  
+These messages must be complex enough they can't be compressed easily and they won't immediately appear non-human to sorting algorithms.  
+
+Since computers are the ones parsing these messages they don't have to be perfect, just not obviously non-human at first glance.  
+
+
+
