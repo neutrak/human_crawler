@@ -57,30 +57,6 @@ proc st_search {str substr} {
 proc crawl_page {url index_regex} {
 	puts "crawl_page debug 0, trying to crawl page $url"
 	
-;# this section parses out the domain from the url, but I don't think we need it
-;# the http library should accomplish this
-if {0} {
-	;# the host to ask for the page, pulled from the url
-	;# initialized empty
-	set domain {}
-	
-	;# TODO: add more TLDs to the list we consider
-	set tlds [list {.com} {.org} {.net} {.edu} {.co.uk} {.ca} {.hu} {.de}]
-	for {set n 0} {$n<[llength $tlds]} {incr n} {
-		set tld_index [st_search $url [lindex $tlds $n]]
-		
-		;# if we found this tld
-		if {$tld_index!=-1} {
-			;# set the domain to the substring up to and including it
-			set domain [st_substr $url 0 [expr {$tld_index+[string length [lindex $tlds $n]]}]]
-			
-			;#and break
-			set n [llength $tlds]
-		}
-	}
-}
-	
-	
 	;# TODO: fetch the text of the page over http
 	set page_content [http::data [http::geturl $url]]
 	puts -nonewline "crawl_page debug 1, got content: \""
