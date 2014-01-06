@@ -12,4 +12,12 @@ These messages must be complex enough they can't be compressed easily and they w
 Since computers are the ones parsing these messages they don't have to be perfect, just not obviously non-human at first glance.  
 
 
+Inputs:
+	user commands and settings (what to search for, store, etc.)
+	web pages being crawled
+
+Outputs:
+	collected information (email addresses, phone numbers, etc.)
+	messages (email, IM, etc.) and posts (forums, etc.) to generate spam data
+		ideally some of this should be encrypted so the NSA has to store it
 
