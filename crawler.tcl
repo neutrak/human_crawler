@@ -6,6 +6,9 @@ set version {0.1}
 
 package require http
 
+;# NOTE: we're using 1 to mean true and 0 to mean false
+;# not sure if this is how TCL does it, but it's our convention
+
 ;# TODO: support crawling ssl pages
 
 ;# a regular expression to detect all urls in the text
@@ -16,8 +19,8 @@ set crawl_url_regex {http://(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z0-9\-]+(?:/[a-zA-Z0-9\-?
 
 ;# TODO crawl urls that reference other pages on the same site also
 
-;# NOTE: we're using 1 to mean true and 0 to mean false
-;# not sure if this is how TCL does it, but it's our convention
+;# a list of hosts /not/ to crawl
+set host_blacklist [list {w3.org}]
 
 ;# BEGIN GENERAL HELPER FUNCTIONS
 
@@ -66,6 +69,7 @@ proc st_search {str substr} {
 proc crawl_page {url index_regex} {
 	global url_regex
 	global crawl_url_regex
+	global host_blacklist
 	
 	puts "crawl_page debug 0, trying to crawl page $url"
 	
@@ -104,8 +108,17 @@ proc crawl_page {url index_regex} {
 	
 	;# take the urls found in the page text and recurse with them!
 	for {set n 0} {$n<[llength $crawl_url_list]} {incr n} {
+		;# check if this host is blacklisted
+		set host_blacklist_check 0
+		for {set blacklist_index 0} {$blacklist_index<[llength $host_blacklist]} {incr blacklist_index} {
+			;# TODO: check based on domain, not just text anywhere in url
+			if {[st_search [lindex $crawl_url_list $n] [lindex $host_blacklist $blacklist_index]]>=0} {
+				set host_blacklist_check 1
+			}
+		}
+		
 		;# if we're already at the page to crawl skip to the next url
-		if {[string equal [lindex $crawl_url_list] $url]} {
+		if {[string equal [lindex $crawl_url_list $n] $url] || $host_blacklist_check} {
 			continue
 		}
 		
