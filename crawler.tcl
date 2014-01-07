@@ -6,6 +6,12 @@ set version {0.1}
 
 package require http
 
+;# TODO: support crawling ssl pages
+
+;# a regular expression to detect all urls in the text
+set url_regex {https?://(?:[a-zA-Z0-9]+\.)+[a-zA-Z0-9]+(?:/[a-zA-Z0-9?&=:./]+)*}
+;# another url regex for what we can actually recurse to, as our http lib doesn't have ssl support
+set crawl_url_regex {http://(?:[a-zA-Z0-9]+\.)+[a-zA-Z0-9]+(?:/[a-zA-Z0-9?&=:./]+)*}
 
 ;# NOTE: we're using 1 to mean true and 0 to mean false
 ;# not sure if this is how TCL does it, but it's our convention
@@ -55,19 +61,59 @@ proc st_search {str substr} {
 ;# a recursive function to crawl a web page
 ;# returns TRUE on success, FALSE on failure
 proc crawl_page {url index_regex} {
+	global url_regex
+	global crawl_url_regex
+	
 	puts "crawl_page debug 0, trying to crawl page $url"
 	
-	;# TODO: fetch the text of the page over http
+	;# fetch the text of the page over http
 	set page_content [http::data [http::geturl $url]]
-	puts -nonewline "crawl_page debug 1, got content: \""
-	puts $page_content
-	puts "\"\n"
+;#	puts -nonewline "crawl_page debug 1, got content: \""
+;#	puts $page_content
+;#	puts "\"\n"
+	
+	;# look for url matches, store in url_list
+	;# we will store these so we know what's been indexed and also use them to make recursive calls
+	set url_list [regexp -all -inline $url_regex $page_content]
+	set crawl_url_list [regexp -all -inline $crawl_url_regex $page_content]
+	
+	;# remove redundancy from the url lists
+	set url_list [lsort -unique $url_list]
+	set crawl_url_list [lsort -unique $crawl_url_list]
+	
+	puts "crawl_page debug 2, found urls :"
+	for {set n 0} {$n<[llength $url_list]} {incr n} {
+		puts "[lindex $url_list $n]"
+	}
 	
 	;# TODO: look through the page text for anything matching index_regex
-	;# and store what's found as appropriate (email addresses, urls, etc.)
+	;# and store what's found as appropriate (email addresses, phone numbers, etc.)
 	
-	;# TODO: take the urls found in the page text and recurse with them!
-	;# (after waiting a random amount of time so as to appear "human" when browsing)
+	;# shuffle the crawl urls so that the order to crawl in isn't easily determined and changes
+	for {set n 0} {$n<[llength $crawl_url_list]} {incr n} {
+		set swap_pos_0 $n
+		set swap_pos_1 [expr {int(([llength $crawl_url_list]-$n)*rand())+$n}]
+		
+		set swap_data [lindex $crawl_url_list $swap_pos_1]
+		lset crawl_url_list $swap_pos_1 [lindex $crawl_url_list $swap_pos_0]
+		lset crawl_url_list $swap_pos_0 $swap_data
+	}
+	
+	;# take the urls found in the page text and recurse with them!
+	for {set n 0} {$n<[llength $crawl_url_list]} {incr n} {
+		;# (after waiting a random amount of time so as to appear "human" when browsing)
+		set sleep_time [expr {int(5*rand())}]
+		puts "wating $sleep_time seconds before the next crawl to appear human..."
+		
+		after [expr {$sleep_time*1000}]
+		
+		;# if the recursion failed return a failure code up
+		if {[crawl_page [lindex $crawl_url_list $n] $index_regex]!=1} {
+			return 0
+		}
+		;# if it succeeded then go on to the next url
+		;# (next iteration of the for loop)
+	}
 	
 	;# NOTE: we're using 1 to mean true
 	return 1
