@@ -1,10 +1,10 @@
-#!/usr/bin/tclsh8.5
+#!/usr/bin/tclsh8.6
 
 ;# human-looking webcrawler, in tcl
 
 set version {0.1}
 
-package require http
+package require TclCurl
 
 ;# NOTE: we're using 1 to mean true and 0 to mean false
 ;# not sure if this is how TCL does it, but it's our convention
@@ -73,8 +73,23 @@ proc crawl_page {url index_regex} {
 	
 	puts "crawl_page debug 0, trying to crawl page $url"
 	
+	;# the file name where we store the page we're currently crawling
+	set crawl_tmp_file [join [list {data} {crawl_tmp.txt}] {/}]
+	
 	;# fetch the text of the page over http
-	set page_content [http::data [http::geturl $url]]
+	set curl_handle [curl::init]
+	;# if there was error
+	if {[curl::transfer -url $url -maxredirs 5 -file $crawl_tmp_file]!=0} {
+		$curl_handle cleanup
+		;# TODO: should this return an error? (it does now)
+		return 1
+	}
+	set file_pointer [open $crawl_tmp_file {r}]
+	set page_content [read $file_pointer [file size $crawl_tmp_file]]
+	close $file_pointer
+	
+;#	set page_content [http::data [http::geturl $url]]
+	
 ;#	puts -nonewline "crawl_page debug 1, got content: \""
 ;#	puts $page_content
 ;#	puts "\"\n"
@@ -127,6 +142,16 @@ proc crawl_page {url index_regex} {
 		puts "wating $sleep_time seconds before the next crawl to appear human..."
 		
 		after [expr {$sleep_time*1000}]
+		
+		;# have a 4% chance of waitng longer
+		if {[expr {int(rand()*100)<4}]} {
+			puts "doing long wait as if the user stopped browsing..."
+			after [expr {75*1000}]
+			
+			;# I'm not 100% sure this is desired behavior but it'll do for now
+			;# break the loop here and return up as if the user started from a higher-up position
+			return 1
+		}
 		
 		;# if the recursion failed return a failure code up
 		if {[crawl_page [lindex $crawl_url_list $n] $index_regex]!=1} {
