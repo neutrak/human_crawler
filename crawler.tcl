@@ -20,7 +20,7 @@ set crawl_url_regex {http://(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z0-9\-]+(?:/[a-zA-Z0-9\-?
 ;# TODO crawl urls that reference other pages on the same site also
 
 ;# a list of hosts /not/ to crawl
-set host_blacklist [list {w3.org}]
+set host_blacklist [list {w3.org} {charter.net}]
 
 ;# BEGIN GENERAL HELPER FUNCTIONS
 
