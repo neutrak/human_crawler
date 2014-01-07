@@ -74,7 +74,10 @@ proc crawl_page {url index_regex} {
 	puts "crawl_page debug 0, trying to crawl page $url"
 	
 	;# the file name where we store the page we're currently crawling
-	set crawl_tmp_file [join [list {data} {crawl_tmp.txt}] {/}]
+	if {![file exists {data}]} {
+		file mkdir {data}
+	}
+	set crawl_tmp_file [file join {data} {crawl_tmp.txt}]
 	
 	;# fetch the text of the page over http
 	set curl_handle [curl::init]
