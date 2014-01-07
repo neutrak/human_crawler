@@ -10,8 +10,11 @@ package require http
 
 ;# a regular expression to detect all urls in the text
 set url_regex {https?://(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z0-9\-]+(?:/[a-zA-Z0-9\-?&=:./]+)*}
+
 ;# another url regex for what we can actually recurse to, as our http lib doesn't have ssl support
 set crawl_url_regex {http://(?:[a-zA-Z0-9\-]+\.)+[a-zA-Z0-9\-]+(?:/[a-zA-Z0-9\-?&=:./]+)*}
+
+;# TODO crawl urls that reference other pages on the same site also
 
 ;# NOTE: we're using 1 to mean true and 0 to mean false
 ;# not sure if this is how TCL does it, but it's our convention
@@ -101,14 +104,14 @@ proc crawl_page {url index_regex} {
 	
 	;# take the urls found in the page text and recurse with them!
 	for {set n 0} {$n<[llength $crawl_url_list]} {incr n} {
-		;# (after waiting a random amount of time so as to appear "human" when browsing)
-		set sleep_time [expr {int(17*rand())}]
-		puts "wating $sleep_time seconds before the next crawl to appear human..."
-		
 		;# if we're already at the page to crawl skip to the next url
 		if {[string equal [lindex $crawl_url_list] $url]} {
 			continue
 		}
+		
+		;# (after waiting a random amount of time so as to appear "human" when browsing)
+		set sleep_time [expr {int(17*rand())}]
+		puts "wating $sleep_time seconds before the next crawl to appear human..."
 		
 		after [expr {$sleep_time*1000}]
 		
