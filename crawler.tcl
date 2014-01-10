@@ -10,10 +10,11 @@ package require TclCurl
 ;# not sure if this is how TCL does it, but it's our convention
 
 ;# a regular expression to detect all urls in the text
-set url_regex {https?://(?:[a-zA-Z0-9\-_]+\.)+[a-zA-Z0-9\-_]+(?:/[a-zA-Z0-9\-_?&=:./;]+)*}
+set url_regex {https?://(?:[a-zA-Z0-9\-_()\%]+\.)+[a-zA-Z0-9\-_()\%]+(?:/[a-zA-Z0-9\-_?&=:\./;()\%]+)*}
 
 ;# TODO crawl urls that reference other pages on the same site (relative urls) also
-set relative_url_regex {}
+;# I think if I add an @ sign in the accepted urls I can get mailto links but I'll have to parse that out too so for the moment I'm not
+set relative_tagged_url_regex {(?:(?:href=[\"\']*)|(?:src=[\"\']*))[a-zA-Z0-9\-_?&=:\./;()%\"\']+[\"\']*}
 
 ;# a regular expression to detect all email addresses in the text
 set email_regex {[a-zA-Z0-9\-_\.()]+@(?:[a-zA-Z0-9\-_]+\.)+[a-zA-Z0-9\-_]+}
@@ -22,7 +23,7 @@ set email_regex {[a-zA-Z0-9\-_\.()]+@(?:[a-zA-Z0-9\-_]+\.)+[a-zA-Z0-9\-_]+}
 set phone_num_regex {[0-9]?\-\ ?(?:[0-9()]{3})?[\-\ ]?[0-9]{3}[\-\ ]?[0-9]{4}}
 
 ;# a list of hosts /not/ to crawl
-set host_blacklist [list {w3.org} {charter.net} {mediawiki.org}]
+set host_blacklist [list {w3.org} {charter.net} {mediawiki.org} {google.com}]
 
 ;# BEGIN GENERAL HELPER FUNCTIONS
 
@@ -114,7 +115,12 @@ proc save_info {info_file url url_list email_list phone_num_list} {
 	;# re-write the file with updated information
 	set file_pointer [open $info_file {w}]
 	for {set n 0} {$n<[llength $info_file_content]} {incr n} {
-		puts $file_pointer [lindex $info_file_content $n]
+		;# if this line isn't blank
+		if {[lindex $info_file_content $n]!={}} {
+			
+			;# write it to the file
+			puts $file_pointer [lindex $info_file_content $n]
+		}
 	}
 	close $file_pointer
 }
@@ -123,6 +129,7 @@ proc save_info {info_file url url_list email_list phone_num_list} {
 ;# returns TRUE on success, FALSE on failure
 proc crawl_page {url max_recursion_depth} {
 	global url_regex
+	global relative_tagged_url_regex
 	global email_regex
 	global phone_num_regex
 	global host_blacklist
@@ -148,38 +155,63 @@ proc crawl_page {url max_recursion_depth} {
 	set page_content [read $file_pointer [file size $crawl_tmp_file]]
 	close $file_pointer
 	
+	;# this was from before the we switched to tclcurl; used the old http lib
 ;#	set page_content [http::data [http::geturl $url]]
-	
-;#	puts -nonewline "crawl_page debug 1, got content: \""
-;#	puts $page_content
-;#	puts "\"\n"
 	
 	;# look for url matches, store in url_list
 	;# we will store these so we know what's been indexed and also use them to make recursive calls
 	;# the lsort -unique removes redundancy from the url list
 	;# the concat serves to flatten the list
 	set url_list [concat {*}[lsort -unique [regexp -all -inline $url_regex $page_content]]]
+	set relative_tagged_url_list [concat {*}[lsort -unique [regexp -all -inline $relative_tagged_url_regex $page_content]]]
 	
-	;# TODO: append relative urls (with current domain prepended) to the url_list here
+	;# the current domain (which gets prepended to relative ulrs)
+	;# (a regex was probably overkill for this but I had one handy)
+	regexp {https?://(?:[a-zA-Z0-9\-_()\%]+\.)+[a-zA-Z0-9\-_()\%]+} $url current_domain
+	
+	for {set n 0} {$n<[llength $relative_tagged_url_list]} {incr n} {
+		;# parse out the tags; this is a nasty hack but it ought to work 90% of the time
+		set tagged_url [lindex $relative_tagged_url_list $n]
+		
+		;# this is for stripping away quotes so we only strip away quotes of a matching type, as the other type would be part of the url
+		set quote_type {}
+		
+		;# strip off everything up to and including the first = sign
+		set equal_index [st_search $tagged_url {=}]
+		set tagged_url [st_substr $tagged_url [expr {$equal_index+1}] [expr {[string length $tagged_url]-$equal_index-[string length {=}]}]]
+		
+		;# strip off quote marks if they're there
+		set tagged_url [string trim $tagged_url {\"}]
+		set tagged_url [string trim $tagged_url {'}]
+		
+		;# now prepend the current url's domain, if this url doesn't already start with "http"
+		if {[st_search $tagged_url "http"]!=0} {
+			;# if it doesn't start with a slash give it one now
+			if {[st_search $tagged_url {/}]!=0} {
+				set tagged_url "/$tagged_url"
+			}
+			
+			set tagged_url "$current_domain$tagged_url"
+		}
+		
+		;# and save it back into the original structure!
+		lset relative_tagged_url_list $n $tagged_url
+	}
+	
+	;# append relative urls (with current domain prepended) to the url_list here
+	for {set n 0} {$n<[llength $relative_tagged_url_list]} {incr n} {
+		;# note that we may accidentally add some javascript here but at worst it'll 404 and I deem that acceptable
+		lappend url_list [lindex $relative_tagged_url_list $n]
+	}
+	
+	;# also re-checking for uniqueness and removing duplicates
+	set url_list [concat {*}[lsort -unique $url_list]]
 	
 	;# look through the page text for anything matching email, phone, etc.
 	set email_list [concat {*}[lsort -unique [regexp -all -inline $email_regex $page_content]]]
 	set phone_num_list [concat {*}[lsort -unique [regexp -all -inline $phone_num_regex $page_content]]]
 	
-;#	puts "crawl_page debug 2, found urls :"
-;#	for {set n 0} {$n<[llength $url_list]} {incr n} {
-;#		puts "[lindex $url_list $n]"
-;#	}
-;#	puts "crawl_page debug 3, found emails :"
-;#	for {set n 0} {$n<[llength $email_list]} {incr n} {
-;#		puts "[lindex $email_list $n]"
-;#	}
-;#	puts "crawl_page debug 4, found phone numbers :"
-;#	for {set n 0} {$n<[llength $phone_num_list]} {incr n} {
-;#		puts "[lindex $phone_num_list $n]"
-;#	}
-	
-	puts "crawl_page debug 5: found [llength $url_list] urls, [llength $email_list] email addresses, [llength $phone_num_list] phone numbers" 
+	puts "crawl_page debug 1: found [llength $url_list] urls, [llength $email_list] email addresses, [llength $phone_num_list] phone numbers" 
 	
 	;# store what's found as appropriate (full names, email addresses, phone numbers, etc.)
 	save_info [file join {data} {scraped_data.txt}] $url $url_list $email_list $phone_num_list
@@ -193,6 +225,9 @@ proc crawl_page {url max_recursion_depth} {
 		lset url_list $swap_pos_1 [lindex $url_list $swap_pos_0]
 		lset url_list $swap_pos_0 $swap_data
 	}
+	
+	;# TODO: put all the image, css, and javascript urls at the start of the url list, with the favicon.ico at the very top if there is one
+	;# because we know a real boy (browser) would load all images before going elsewhere
 	
 	;# take the urls found in the page text and recurse with them!
 	for {set n 0} {$n<[llength $url_list]} {incr n} {
