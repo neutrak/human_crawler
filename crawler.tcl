@@ -483,8 +483,10 @@ proc main {argc argv argv0} {
 	} else {
 		puts "no url to crawl given..."
 		
-		;# TODO: check all the urls on file 
+		;# TODO: check all the urls on file, instead of just returning/exiting
 		;# and re-index existing pages based on the current time and last index time
+		
+		return 0
 	}
 	
 	;# if the starting url is invalid then just give up
