@@ -274,14 +274,14 @@ proc crawl_page {url max_recursion_depth} {
 	}
 	set crawl_tmp_file [file join {data} {crawl_tmp.txt}]
 	
+	;#TODO: see if curl lets me set a user agent, I'd like to appear as a common browser (one of several, at random?)
+	
 	;# fetch the text of the page over http
-	set curl_handle [curl::init]
 	;# if there was error
 	if {[curl::transfer -url $url -maxredirs 5 -file $crawl_tmp_file]!=0} {
-		$curl_handle cleanup
 		;# TODO: should this return an error? (it doesn't now)
-;#		return 1
-		return 0
+		return 1
+;#		return 0
 	}
 	set file_pointer [open $crawl_tmp_file {r}]
 	set page_content [read $file_pointer [file size $crawl_tmp_file]]
@@ -300,6 +300,11 @@ proc crawl_page {url max_recursion_depth} {
 	;# the current domain (which gets prepended to relative ulrs)
 	;# (a regex was probably overkill for this but I had one handy)
 	regexp {https?://(?:[a-zA-Z0-9\-_()\%]+\.)+[a-zA-Z0-9\-_()\%]+} $url current_domain
+	regexp {(?:[a-zA-Z0-9\-_()\%]+\.)+[a-zA-Z0-9\-_()\%]+} $url save_domain
+	
+	if {![file exists [file join {data} $save_domain]]} {
+		file mkdir [file join {data} $save_domain]
+	}
 	
 	for {set n 0} {$n<[llength $relative_tagged_url_list]} {incr n} {
 		;# parse out the tags; this is a nasty hack but it ought to work 90% of the time
@@ -317,13 +322,21 @@ proc crawl_page {url max_recursion_depth} {
 		set tagged_url [string trim $tagged_url {'}]
 		
 		;# now prepend the current url's domain, if this url doesn't already start with "http"
+		;# TODO: also account for sub-domain references
 		if {[st_search $tagged_url "http"]!=0} {
 			;# if it doesn't start with a slash give it one now
-			if {[st_search $tagged_url {/}]!=0} {
+			if {[string index $tagged_url 0]!={/}} {
 				set tagged_url "/$tagged_url"
 			}
 			
-			set tagged_url "$current_domain$tagged_url"
+			;# if both characters were slashes prepend http, this is on a different host
+			if {[st_search $tagged_url {//}]==0} {
+				set tagged_url "http:$tagged_url"
+			
+			;# if the url didn't start with // then prepend the current domain, this is a relative url
+			} else {
+				set tagged_url "$current_domain$tagged_url"
+			}
 		}
 		
 		;# and save it back into the original structure!
@@ -347,7 +360,7 @@ proc crawl_page {url max_recursion_depth} {
 	puts "crawl_page debug 1: found [llength $url_list] url(s), [llength $email_list] email addresse(s), [llength $phone_num_list] phone number(s)" 
 	
 	;# store what's found as appropriate (full names, email addresses, phone numbers, etc.)
-	save_info [file join {data} {scraped_data.txt}] $url $url_list $email_list $phone_num_list
+	save_info [file join {data} $save_domain {scraped_data.txt}] $url $url_list $email_list $phone_num_list
 	
 	;# shuffle the urls so that the order to crawl in isn't easily determined and changes with each run
 	for {set n 0} {$n<[llength $url_list]} {incr n} {
@@ -359,8 +372,48 @@ proc crawl_page {url max_recursion_depth} {
 		lset url_list $swap_pos_0 $swap_data
 	}
 	
-	;# TODO: put all the image, css, and javascript urls at the start of the url list, with the favicon.ico at the very top if there is one
+	;# put all the image, css, and javascript urls at the start of the url list, with the favicon.ico at the very top if there is one
 	;# because we know a real boy (browser) would load all images before going elsewhere
+	;# also maybe eliminate the waits for those?
+	
+	;# initialize a blank url list, which will get copied from the already parsed one after it's re-arranged (below)
+	set new_url_list [list]
+	set copied_url_indices [list]
+	
+	;# a list of extensions indicating a higher priority
+	set priority_extensions [list {.css} {.js} {.ico} {.png} {.jpg} {.jpeg} {.gif} {.bmp}]
+	
+	;# first copy over everything with a high priority extension into a new url list
+	for {set ext_index 0} {$ext_index<[llength $priority_extensions]} {incr ext_index} {
+		for {set url_index 0} {$url_index<[llength $url_list]} {incr url_index} {
+			
+			;# if this url ends with one of the given file extensions
+			if {[string last [lindex $priority_extensions $ext_index] [string tolower [lindex $url_list $url_index]]]==[expr {[string length [lindex $url_list $url_index]]-[string length [lindex $priority_extensions $ext_index]]}]} {
+				
+				lappend new_url_list [lindex $url_list $url_index]
+				lappend copied_url_indices $url_index
+			}
+		}
+	}
+	set crawls_before_wait [llength $new_url_list]
+	
+	;# then copy over everything with a regular/low priority
+	for {set url_index 0} {$url_index<[llength $url_list]} {incr url_index} {
+		set already_copied 0
+		for {set n 0} {$n<[llength $copied_url_indices]} {incr n} {
+			if {$url_index==[lindex $copied_url_indices $n]} {
+				set already_copied 1
+			}
+		}
+		
+		if {!$already_copied} {
+			lappend new_url_list [lindex $url_list $url_index]
+		}
+	}
+	
+	;# and finally save it back to our old variable
+	set url_list $new_url_list
+;#	puts "crawl_page debug 2; found [llength $url_list] urls, of which $crawls_before_wait are high-priority"
 	
 	;# take the urls found in the page text and recurse with them!
 	for {set n 0} {$n<[llength $url_list]} {incr n} {
@@ -383,20 +436,23 @@ proc crawl_page {url max_recursion_depth} {
 			break
 		}
 		
-		;# (after waiting a random amount of time so as to appear "human" when browsing)
-		set sleep_time [expr {int(17*rand())}]
-		puts "wating $sleep_time seconds before the next crawl to appear human..."
-		
-		after [expr {$sleep_time*1000}]
-		
-		;# have a 4% chance of waitng longer
-		if {[expr {int(rand()*100)<4}]} {
-			puts "doing long wait as if the user stopped browsing..."
-			after [expr {75*1000}]
+		;# if this isn't a high-priority request, then wait
+		if {$n>=$crawls_before_wait} {
+			;# (after waiting a random amount of time so as to appear "human" when browsing)
+			set sleep_time [expr {int(17*rand())}]
+			puts "wating $sleep_time seconds before the next crawl to appear human..."
 			
-			;# I'm not 100% sure this is desired behavior but it'll do for now
-			;# break the loop here and return up as if the user started from a higher-up position
-;#			return 1
+			after [expr {$sleep_time*1000}]
+			
+			;# have a 4% chance of waitng longer
+			if {[expr {int(rand()*100)<4}]} {
+				puts "doing long wait as if the user stopped browsing..."
+				after [expr {75*1000}]
+				
+				;# I'm not 100% sure this is desired behavior but it'll do for now
+				;# break the loop here and return up as if the user started from a higher-up position
+	;#			return 1
+			}
 		}
 		
 		;# if the recursion failed return a failure code up
