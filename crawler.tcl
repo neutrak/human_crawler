@@ -258,8 +258,9 @@ proc save_info {info_file url url_list email_list phone_num_list} {
 }
 
 ;# a recursive function to crawl a web page, limited to a given depth because otherwise we'll never get back to the initial page
+;# the store_data flag tells whether we parse urls, etc. out of this or not
 ;# returns TRUE on success, FALSE on failure
-proc crawl_page {url max_recursion_depth} {
+proc crawl_page {url max_recursion_depth store_data} {
 	global url_regex
 	global relative_tagged_url_regex
 	global email_regex
@@ -289,6 +290,12 @@ proc crawl_page {url max_recursion_depth} {
 	
 	;# this was from before the we switched to tclcurl; used the old http lib
 ;#	set page_content [http::data [http::geturl $url]]
+	
+	;# if we're not storing data then we're done
+	if {!($store_data)} {
+		;# we succeeded at doing nothing
+		return 1
+	}
 	
 	;# look for url matches, store in url_list
 	;# we will store these so we know what's been indexed and also use them to make recursive calls
@@ -436,10 +443,15 @@ proc crawl_page {url max_recursion_depth} {
 			break
 		}
 		
+		;# set the depth, initially just one minus the current depth
+		set recurse_to [expr {$max_recursion_depth-1}]
+		;# and by default store recursion data, but if this is a priority url then don't
+		set store_recursion_data 1
+		
 		;# if this isn't a high-priority request, then wait
 		if {$n>=$crawls_before_wait} {
 			;# (after waiting a random amount of time so as to appear "human" when browsing)
-			set sleep_time [expr {int(17*rand())}]
+			set sleep_time [expr {int(60*rand())}]
 			puts "wating $sleep_time seconds before the next crawl to appear human..."
 			
 			after [expr {$sleep_time*1000}]
@@ -453,10 +465,16 @@ proc crawl_page {url max_recursion_depth} {
 				;# break the loop here and return up as if the user started from a higher-up position
 	;#			return 1
 			}
+		;# if this is a high-priority file, such as an image or javascript
+		;# then always load it regardless of recursion, but recurse no further
+		;# this will hopefully make us appear more human
+		} else {
+			set recurse_to 0
+			set store_recursion_data 0
 		}
 		
 		;# if the recursion failed return a failure code up
-		if {[crawl_page [lindex $url_list $n] [expr {$max_recursion_depth-1}]]!=1} {
+		if {[crawl_page [lindex $url_list $n] $recurse_to $store_recursion_data]!=1} {
 			return 0
 		}
 		;# if it succeeded then go on to the next url
@@ -495,7 +513,8 @@ proc main {argc argv argv0} {
 	}
 	
 	;# if we got here and didn't return, start crawling!
-	crawl_page $start_url $max_recursion_depth
+	;# the 1 is the store_data flag, always true at this level (later used as a recursion parameter)
+	crawl_page $start_url $max_recursion_depth 1
 }
 
 ;# runtime!
