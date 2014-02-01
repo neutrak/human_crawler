@@ -260,14 +260,14 @@ proc save_info {info_file url url_list email_list phone_num_list} {
 ;# a recursive function to crawl a web page, limited to a given depth because otherwise we'll never get back to the initial page
 ;# the store_data flag tells whether we parse urls, etc. out of this or not
 ;# returns TRUE on success, FALSE on failure
-proc crawl_page {url max_recursion_depth store_data} {
+proc crawl_page {url max_recursion_depth store_data click_chance} {
 	global url_regex
 	global relative_tagged_url_regex
 	global email_regex
 	global phone_num_regex
 	global host_blacklist
 	
-	puts "crawl_page debug 0, trying to crawl page $url, max_recursion_depth=$max_recursion_depth"
+	puts "crawl_page debug 0, trying to crawl page $url, click_chance=$click_chance, max_recursion_depth=$max_recursion_depth"
 	
 	;# the file name where we store the page we're currently crawling
 	if {![file exists {data}]} {
@@ -276,6 +276,7 @@ proc crawl_page {url max_recursion_depth store_data} {
 	set crawl_tmp_file [file join {data} {crawl_tmp.txt}]
 	
 	;#TODO: see if curl lets me set a user agent, I'd like to appear as a common browser (one of several, at random?)
+	;#TODO: add an if-modified-since header to the requests too? a real browser would cache and I already store timestamps
 	
 	;# fetch the text of the page over http
 	;# if there was error
@@ -448,22 +449,33 @@ proc crawl_page {url max_recursion_depth store_data} {
 		;# and by default store recursion data, but if this is a priority url then don't
 		set store_recursion_data 1
 		
+		;# whether or not we're actually going to go to this page
+		;# a real user wouldn't click every link so neither should we
+		set click_this_link 1
+		
 		;# if this isn't a high-priority request, then wait
 		if {$n>=$crawls_before_wait} {
-			;# (after waiting a random amount of time so as to appear "human" when browsing)
-			set sleep_time [expr {int(60*rand())}]
-			puts "wating $sleep_time seconds before the next crawl to appear human..."
-			
-			after [expr {$sleep_time*1000}]
-			
-			;# have a 4% chance of waitng longer
-			if {[expr {int(rand()*100)<4}]} {
-				puts "doing long wait as if the user stopped browsing..."
-				after [expr {75*1000}]
+			;# if we shouldn't follow this link, then don't
+			set click_check [expr {rand()}]
+			;# note the range for click_chance is [0,1]
+			if {$click_check>$click_chance} {
+				set click_this_link 0
+			} else {
+				;# (after waiting a random amount of time so as to appear "human" when browsing)
+				set sleep_time [expr {int(60*rand())}]
+				puts "wating $sleep_time seconds before the next crawl to appear human..."
 				
-				;# I'm not 100% sure this is desired behavior but it'll do for now
-				;# break the loop here and return up as if the user started from a higher-up position
-	;#			return 1
+				after [expr {$sleep_time*1000}]
+				
+				;# have a 4% chance of waitng longer
+				if {[expr {int(rand()*100)<4}]} {
+					puts "doing long wait as if the user stopped browsing..."
+					after [expr {75*1000}]
+					
+					;# I'm not 100% sure this is desired behavior but it'll do for now
+					;# break the loop here and return up as if the user started from a higher-up position
+		;#			return 1
+				}
 			}
 		;# if this is a high-priority file, such as an image or javascript
 		;# then always load it regardless of recursion, but recurse no further
@@ -471,10 +483,11 @@ proc crawl_page {url max_recursion_depth store_data} {
 		} else {
 			set recurse_to 0
 			set store_recursion_data 0
+			set click_this_link 1
 		}
 		
 		;# if the recursion failed return a failure code up
-		if {[crawl_page [lindex $url_list $n] $recurse_to $store_recursion_data]!=1} {
+		if {$click_this_link && ([crawl_page [lindex $url_list $n] $recurse_to $store_recursion_data $click_chance]!=1)} {
 			return 0
 		}
 		;# if it succeeded then go on to the next url
@@ -490,7 +503,11 @@ proc crawl_page {url max_recursion_depth store_data} {
 proc main {argc argv argv0} {
 	;# the url to start crawling from
 	set start_url {}
-	set max_recursion_depth 10
+	set max_recursion_depth 6
+	;# store_data flag, always true at this level (later used as a recursion parameter)
+	set store_data 1
+	;# the click_chance; the probability that any given non-priority link is clicked
+	set click_chance 0.5
 	
 	;# if we got an argument from the user, start there
 	if {$argc>0} {
@@ -498,7 +515,12 @@ proc main {argc argv argv0} {
 		if {$argc>1} {
 			set max_recursion_depth [lindex $argv 1]
 		}
+		if {$argc>2} {
+			set click_chance [lindex $argv 2]
+		}
 	} else {
+		puts "Usage: $argv0 <starting url> \[max recursion depth\] \[click chance\]"
+		puts "\t(by default max_recursion_depth=$max_recursion_depth, click_chance=$click_chance)"
 		puts "no url to crawl given..."
 		
 		;# TODO: check all the urls on file, instead of just returning/exiting
@@ -513,8 +535,7 @@ proc main {argc argv argv0} {
 	}
 	
 	;# if we got here and didn't return, start crawling!
-	;# the 1 is the store_data flag, always true at this level (later used as a recursion parameter)
-	crawl_page $start_url $max_recursion_depth 1
+	crawl_page $start_url $max_recursion_depth $store_data $click_chance
 }
 
 ;# runtime!
