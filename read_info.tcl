@@ -30,6 +30,7 @@ proc read_info {info_file desired_field_index} {
 ;#	append current_info_line " {$email_list}"
 ;#	append current_info_line " {$phone_num_list}"
 	
+	set matching_lines 0
 	
 	;# go through every line and print out the relevant data the user asked for
 	for {set line_idx 0} {$line_idx<[llength $info_file_content]} {incr line_idx} {
@@ -72,14 +73,19 @@ proc read_info {info_file desired_field_index} {
 			set acc_string {}
 		}
 		
-		;# if this was parsed more-or-less correctly
+		;# if this was parsed more-or-less correctly; the 4 is for the number of fields we expect
 		if {[llength $line_list]>4} {
 			;# get out all the data the user could ask for from the newly-parsed list
-			puts [lindex $line_list $desired_field_index]
+			set output_line [lindex $line_list $desired_field_index]
+			if {[string length $output_line]>0} {
+				puts $output_line
+				incr matching_lines
+			}
 		} else {
 			puts "Err: Could not parse $line_data"
 		}
 	}
+	puts "Found $matching_lines urls with data in field $desired_field_index"
 	
 	return 1
 }
