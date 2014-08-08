@@ -14,7 +14,7 @@ package require TclCurl
 ;# a regular expression to detect all urls in the text
 set url_regex {https?://(?:[a-zA-Z0-9\-_()\%]+\.)+[a-zA-Z0-9\-_()\%]+(?:/[a-zA-Z0-9\-_?&=:\./;()\%]+)*}
 
-;# TODO crawl urls that reference other pages on the same site (relative urls) also
+;# urls that reference other pages on the same site (relative urls) are handled separately, and will have the domain prepended to them
 ;# I think if I add an @ sign in the accepted urls I can get mailto links but I'll have to parse that out too so for the moment I'm not
 ;#set relative_tagged_url_regex {(?:(?:href=[\"\']*)|(?:src=[\"\']*))[a-zA-Z0-9\-_?&=:\./;()%\"\']+[\"\']*}
 set relative_tagged_url_regex {(?:(?:href=[\"\']*)|(?:src=[\"\']*))[a-zA-Z0-9\-_?&=:\./;%\"\']+[\"\']*}
@@ -32,6 +32,12 @@ set email_regex {[a-zA-Z0-9\-_\.()]+@(?:[a-zA-Z0-9\-_]+\.)+[a-zA-Z0-9\-_]+}
 set host_blacklist [list {w3.org} {charter.net} {mediawiki.org} {google.com}]
 
 ;# BEGIN GENERAL HELPER FUNCTIONS
+
+;#TODO: WRITE THIS!
+;#returns the content of the first instance of a given tag, starting at start_index (0 for all text)
+proc tag_content {text tag start_index} {
+	return {}
+}
 
 ;# get a substring from the given string
 proc st_substr {str start length} {
@@ -280,7 +286,8 @@ proc crawl_page {url max_recursion_depth store_data click_chance} {
 	
 	;# fetch the text of the page over http
 	;# if there was error
-	if {[curl::transfer -url $url -maxredirs 5 -file $crawl_tmp_file]!=0} {
+	if {[catch {curl::transfer -url $url -maxredirs 5 -file $crawl_tmp_file}]!=0} {
+		puts "Err: Couldn't fetch page at $url, curl returned error"
 		;# TODO: should this return an error? (it doesn't now)
 		return 1
 ;#		return 0
@@ -330,7 +337,7 @@ proc crawl_page {url max_recursion_depth store_data click_chance} {
 		set tagged_url [string trim $tagged_url {'}]
 		
 		;# now prepend the current url's domain, if this url doesn't already start with "http"
-		;# TODO: also account for sub-domain references
+		;# TODO: also account for sub-domain references (is this already done as emergent behavior from existing rules?)
 		if {[st_search $tagged_url "http"]!=0} {
 			;# if it doesn't start with a slash give it one now
 			if {[string index $tagged_url 0]!={/}} {
